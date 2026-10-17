@@ -9,16 +9,24 @@ description = "A lightweight desktop API client. No account, no cloud, local onl
 readme = "README.md"
 license = "LGPL-2.1-only"
 requires-python = ">=3.10"
+classifiers = [
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: X11 Applications :: Qt",
+]
 dependencies = [
-    "PySide6>=6.8",
+    "PySide6>=6.9",
     "requests>=2.32",
     "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pyflakes>=3"]
+build = ["pyinstaller>=6.10", "pillow>=10"]
 
-[project.scripts]
+# A GUI entry point: on Windows it starts without opening a console window.
+[project.gui-scripts]
 hitman = "hitman.app:main"
 
 [tool.setuptools.packages.find]

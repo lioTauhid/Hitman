@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QCheckBox, QFrame, QLabel, QLineEdit, QPlainTextEdit, QSizePolicy, QWidget
+from PySide6.QtWidgets import (QCheckBox, QFrame, QLabel, QLineEdit, QPlainTextEdit, QSizePolicy, QStackedWidget,
+                               QWidget)
 
 from hitman.core.models import KeyValue
 from hitman.ui.fonts import mono_font, ui_font
 from hitman.ui.theme import manager, set_cls, theme
-from hitman.ui.widgets.common import ElidedLabel, IconButton, hbox, vbox
+from hitman.ui.widgets.common import ElidedLabel, IconButton, SelectButton, hbox, vbox
+from hitman.ui.widgets.file_field import FileField
+from hitman.ui.widgets.popover import PopoverMenu
 
 # Column stretch factors from the design: Key 1fr, Value 1.25fr, Description 1.1fr.
 _STRETCH = (100, 125, 110)
@@ -31,9 +34,10 @@ class _Row(QFrame):
     removed = Signal(object)
 
     def __init__(self, *, ghost: bool, fixed_key: bool, show_description: bool, first: bool,
-                 key_placeholder: str, value_placeholder: str):
+                 key_placeholder: str, value_placeholder: str, allow_files: bool = False):
         super().__init__()
-        self.ghost, self.fixed_key = ghost, fixed_key
+        self.ghost, self.fixed_key, self.allow_files = ghost, fixed_key, allow_files
+        self.type = "text"
         set_cls(self, "table-row-first" if first else "table-row")
         self.setMinimumHeight(34)
         layout = hbox(self)
@@ -48,10 +52,16 @@ class _Row(QFrame):
         cell_layout.addWidget(self.check, 0, Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.check_cell)
 
-        self.key = _cell_edit(key_placeholder, mono=True)
-        self.value = _cell_edit(value_placeholder, mono=True, last=not show_description)
-        layout.addWidget(self.key, _STRETCH[0])
-        layout.addWidget(self.value, _STRETCH[1])
+        self.key = _cell_edit(key_placeholder, mono=True, last=allow_files)
+        self.value = _cell_edit(value_placeholder, mono=True, last=allow_files or not show_description)
+        self.type_button: SelectButton | None = None
+        self.file_field: FileField | None = None
+        if allow_files:
+            layout.addWidget(self._build_key_cell(), _STRETCH[0])
+            layout.addWidget(self._build_value_cell(show_description), _STRETCH[1])
+        else:
+            layout.addWidget(self.key, _STRETCH[0])
+            layout.addWidget(self.value, _STRETCH[1])
         self.description = None
         if show_description:
             self.description = _cell_edit("Description" if ghost else "", mono=False, last=True)
@@ -80,6 +90,59 @@ class _Row(QFrame):
         manager().changed.connect(self._restyle)
         self._restyle()
 
+    # ------------------------------------------------------- file fields
+    def _build_key_cell(self) -> QFrame:
+        """Key input plus a Text/File type picker."""
+        cell = QFrame()
+        set_cls(cell, "cell")
+        layout = hbox(cell, (0, 0, 4, 0), 2)
+        layout.addWidget(self.key, 1)
+        self.type_button = SelectButton("Text", px=11.5, role="fg3", height=22, margins=(7, 0, 5, 0),
+                                        on_open=self._open_type_menu)
+        self.type_button.setObjectName("FieldType")
+        self.type_button.setFixedWidth(60)
+        self.type_button.setToolTip("Send this field as text or as a file")
+        self.type_button.setAccessibleName("Field type: Text")
+        layout.addWidget(self.type_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        return cell
+
+    def _build_value_cell(self, bordered: bool) -> QFrame:
+        """Text input or file picker, depending on the field type."""
+        cell = QFrame()
+        if bordered:
+            set_cls(cell, "cell")
+        self.value_stack = QStackedWidget()
+        self.value_stack.addWidget(self.value)
+        self.file_field = FileField()
+        self.file_field.changed.connect(lambda: self.edited.emit(self))
+        self.value_stack.addWidget(self.file_field)
+        hbox(cell).addWidget(self.value_stack)
+        return cell
+
+    def _open_type_menu(self, anchor: QWidget) -> None:
+        menu = PopoverMenu(self)
+        menu.add_item("Text", lambda: self.set_type("text", user=True), checked=self.type == "text")
+        menu.add_item("File", lambda: self.set_type("file", user=True), checked=self.type == "file")
+        menu.show_at(anchor, width=120)
+
+    def set_type(self, field_type: str, user: bool = False) -> None:
+        if not self.allow_files:
+            return
+        changed = field_type != self.type
+        self.type = field_type
+        label = "File" if field_type == "file" else "Text"
+        self.type_button.set_text(label)
+        self.type_button.setAccessibleName(f"Field type: {label}")
+        self.value_stack.setCurrentIndex(1 if field_type == "file" else 0)
+        self._restyle()
+        if user and changed:
+            self.edited.emit(self)
+
+    def set_files_enabled(self, enabled: bool) -> None:
+        if self.allow_files:
+            self.type_button.setVisible(enabled)
+            self.file_field.set_files_enabled(enabled)
+
     def _edits(self) -> list[QLineEdit]:
         return [e for e in (self.key, self.value, self.description) if e is not None]
 
@@ -95,6 +158,8 @@ class _Row(QFrame):
         self.value.setStyleSheet(f"padding: 0 10px; color: {t.c('fg3' if dim else 'fg').name()};")
         if self.description:
             self.description.setStyleSheet(f"padding: 0 10px; color: {t.c('fg3' if dim else 'fg2').name()};")
+        if self.file_field:
+            self.file_field.set_dim(dim)
 
     def materialize(self) -> None:
         self.ghost = False
@@ -113,9 +178,13 @@ class _Row(QFrame):
 
     def set_data(self, row: KeyValue) -> None:
         key = f":{row.key}" if self.fixed_key else row.key
-        for edit, text in ((self.key, key), (self.value, row.value)):
+        file_row = self.allow_files and row.is_file
+        for edit, text in ((self.key, key), (self.value, "" if file_row else row.value)):
             if edit.text() != text:
                 edit.setText(text)
+        if self.allow_files:
+            self.file_field.set_path(row.value if file_row else "")
+            self.set_type("file" if file_row else "text")
         if self.description and self.description.text() != row.description:
             self.description.setText(row.description)
         self.check.blockSignals(True)
@@ -125,9 +194,10 @@ class _Row(QFrame):
 
     def data(self) -> KeyValue:
         key = self.key.text().removeprefix(":") if self.fixed_key else self.key.text()
-        return KeyValue(key=key, value=self.value.text(),
+        is_file = self.allow_files and self.type == "file"
+        return KeyValue(key=key, value=self.file_field.path() if is_file else self.value.text(),
                         description=self.description.text() if self.description else "",
-                        enabled=self.check.isChecked() or self.fixed_key)
+                        enabled=self.check.isChecked() or self.fixed_key, type="file" if is_file else "text")
 
 
 class KeyValueEditor(QWidget):
@@ -136,10 +206,15 @@ class KeyValueEditor(QWidget):
     changed = Signal()
 
     def __init__(self, *, show_description: bool = True, fixed_keys: bool = False, header: bool = True,
-                 key_placeholder: str = "Key", value_placeholder: str = "Value", parent: QWidget | None = None):
+                 key_placeholder: str = "Key", value_placeholder: str = "Value", allow_files: bool = False,
+                 parent: QWidget | None = None):
+        """`allow_files` adds a Text/File picker to each row (for multipart form-data bodies)."""
         super().__init__(parent)
         self._show_description = show_description
         self._fixed = fixed_keys
+        self._allow_files = allow_files
+        self._files_enabled = True
+        self._types: dict[str, str] = {}  # remembers file fields across bulk edits
         self._key_ph, self._value_ph = key_placeholder, value_placeholder
         self._rows: list[_Row] = []
         self._descriptions: dict[str, str] = {}
@@ -186,7 +261,9 @@ class KeyValueEditor(QWidget):
     # -------------------------------------------------------------- rows
     def _add_row(self, ghost: bool) -> _Row:
         row = _Row(ghost=ghost, fixed_key=self._fixed, show_description=self._show_description, first=False,
-                   key_placeholder=self._key_ph if not self._fixed else "", value_placeholder=self._value_ph)
+                   key_placeholder=self._key_ph if not self._fixed else "", value_placeholder=self._value_ph,
+                   allow_files=self._allow_files)
+        row.set_files_enabled(self._files_enabled)
         row.edited.connect(self._on_row_edited)
         row.removed.connect(self._on_row_removed)
         self._rows.append(row)
@@ -232,9 +309,20 @@ class KeyValueEditor(QWidget):
         for row_widget, data in zip(real, rows):
             row_widget.set_data(data)
         self._restripe()
-        self._descriptions = {r.key: r.description for r in rows if r.description}
+        self._remember(rows)
         if self._bulk:
             self._fill_bulk(rows)
+
+    def set_files_enabled(self, enabled: bool) -> None:
+        """Show the Text/File pickers (form-data) or hide them (url-encoded, where files aren't sent)."""
+        self._files_enabled = enabled
+        for row in self._rows:
+            row.set_files_enabled(enabled)
+
+    def _remember(self, rows: list[KeyValue]) -> None:
+        """Bulk edit only shows `key: value`; keep descriptions and file types to restore afterwards."""
+        self._descriptions = {r.key: r.description for r in rows if r.description}
+        self._types = {r.key: r.type for r in rows if r.is_file}
 
     def rows(self) -> list[KeyValue]:
         if self._bulk:
@@ -250,7 +338,7 @@ class KeyValueEditor(QWidget):
             return
         if on:
             rows = self.rows()
-            self._descriptions = {r.key: r.description for r in rows if r.description}
+            self._remember(rows)
             self._fill_bulk(rows)
             self._bulk = True
             self.table.hide()
@@ -281,7 +369,7 @@ class KeyValueEditor(QWidget):
                 key, _, value = body.partition("=")
             key = key.strip()
             out.append(KeyValue(key=key, value=value.strip(), description=self._descriptions.get(key, ""),
-                                enabled=enabled))
+                                enabled=enabled, type=self._types.get(key, "text")))
         return out
 
     def _on_bulk_text(self) -> None:

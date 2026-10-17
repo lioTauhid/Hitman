@@ -12,7 +12,7 @@ from hitman import APP_NAME, __version__
 from hitman.paths import database_path
 from hitman.services.workspace import Workspace
 from hitman.storage.database import Database
-from hitman.ui import icons
+from hitman.ui import icons, native
 from hitman.ui.fonts import load_fonts, ui_font
 from hitman.ui.main_window import MainWindow
 from hitman.ui.theme import ACCENT, ON_ACCENT, ThemeManager
@@ -36,16 +36,27 @@ def app_icon() -> QIcon:
     return icon
 
 
-def main() -> None:
+def create_app(argv: list[str]) -> QApplication:
+    """Create the QApplication with the same look and identity on macOS, Windows and Linux."""
     QApplication.setApplicationName(APP_NAME)
     QApplication.setApplicationDisplayName(APP_NAME)
     QApplication.setApplicationVersion(__version__)
     QApplication.setOrganizationName(APP_NAME)
-    app = QApplication(sys.argv)
+    QApplication.setDesktopFileName("hitman")  # Linux/Wayland: match the window to its .desktop entry
+    native.set_windows_app_id(f"{APP_NAME}.{APP_NAME}")
+    app = QApplication(argv)
+    # Fusion renders the style sheet identically everywhere; native styles ignore parts of it.
+    app.setStyle("Fusion")
+    # The default font is set here, not in the style sheet: a style-sheet font rule would override
+    # the fonts widgets set for themselves (monospace editors, small labels).
     load_fonts()
     app.setFont(ui_font(13))
     app.setWindowIcon(app_icon())
+    return app
 
+
+def main() -> None:
+    app = create_app(sys.argv)
     workspace = Workspace(Database(database_path()))
     ThemeManager(app).configure(workspace.settings.theme, workspace.settings.font_size)
     window = MainWindow(workspace)

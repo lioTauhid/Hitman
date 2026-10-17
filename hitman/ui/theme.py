@@ -12,7 +12,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QPalette
 from PySide6.QtWidgets import QAbstractButton, QApplication, QLabel, QWidget
 
 from hitman.ui import icons
-from hitman.ui.fonts import px_to_pt
+from hitman.ui.fonts import css_families, px_to_pt
 
 ACCENT = "#C6F35B"
 ON_ACCENT = "#121405"
@@ -187,8 +187,9 @@ _SIZES = (10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 15, 16, 18)
 
 STYLE_SHEET = Template("""
 * { outline: 0; }
-QWidget { color: $fg; font-family: "Geist", ".AppleSystemUIFont", "Segoe UI", sans-serif; font-size: $fs13; }
+QWidget { color: $fg; }
 QMainWindow, #Root { background: $bg; }
+#Root[framed="true"] { border: 1px solid $line_strong; }
 QToolTip { background: $surface2; color: $fg; border: 1px solid $line_strong; border-radius: 6px; padding: 4px 8px; font-size: $fs12; }
 QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; border: 0; }
 QAbstractScrollArea { background: transparent; }
@@ -217,13 +218,13 @@ QLabel[cls="hint"] { font-size: $fs12; color: $fg3; }
 QLabel[cls="small"] { font-size: $fs11_5; color: $fg3; }
 QLabel[cls="tiny"] { font-size: $fs11; color: $fg3; }
 QLabel[cls="caps"] { font-size: $fs11; font-weight: 600; color: $fg3; }
-QLabel[cls="mono"] { font-family: "Geist Mono", "Menlo", monospace; font-size: $fs12; }
+QLabel[cls="mono"] { font-family: $mono_family; font-size: $fs12; }
 QLabel[cls="pill"] { font-size: $fs11; color: $fg2; border: 1px solid $line; border-radius: 9px; padding: 1px 8px; }
 QLabel[cls="chip"] { font-size: $fs12; color: $fg2; border: 1px solid $line; border-radius: 13px; background: $surface2; padding: 4px 10px; }
 QLabel[cls="badge"] { font-size: $fs10_5; font-weight: 600; color: $on_accent; background: $accent; border-radius: 8px; padding: 2px 7px; }
 QLabel[cls="format"] { font-size: $fs11_5; font-weight: 600; color: $accent_text; border: 1px solid $line; border-radius: 6px; padding: 0 8px; }
-QLabel[cls="kbd"] { font-family: "Geist Mono", monospace; font-size: $fs10_5; color: $fg2; padding: 2px 6px; border: 1px solid $line; border-radius: 4px; background: $surface2; }
-QLabel[cls="kbd-lg"] { font-family: "Geist Mono", monospace; font-size: $fs11; color: $fg2; padding: 1px 6px; border: 1px solid $line_strong; border-bottom-width: 2px; border-radius: 5px; background: $surface2; min-width: 10px; }
+QLabel[cls="kbd"] { font-family: $mono_family; font-size: $fs10_5; color: $fg2; padding: 2px 6px; border: 1px solid $line; border-radius: 4px; background: $surface2; }
+QLabel[cls="kbd-lg"] { font-family: $mono_family; font-size: $fs11; color: $fg2; padding: 1px 6px; border: 1px solid $line_strong; border-bottom-width: 2px; border-radius: 5px; background: $surface2; min-width: 10px; }
 QLabel[cls="icon-tile"] { background: $surface3; border-radius: 9px; }
 QLabel[cls="error"] { font-size: $fs12; color: $err; }
 
@@ -263,6 +264,10 @@ QPushButton[cls="select"] { text-align: left; padding: 0; }
 QPushButton[cls="segment"] { border: 0; border-radius: 5px; background: transparent; color: $fg3; font-size: $fs12; padding: 0 10px; }
 QPushButton[cls="segment"]:checked { background: $surface3; color: $fg; }
 QPushButton[cls="segment"]:hover:!checked { color: $fg; }
+QPushButton[cls="file-chip"] { background: $surface3; border: 0; border-radius: 5px; padding: 0; text-align: left; }
+QPushButton[cls="file-chip"]:hover { background: $line_strong; }
+#FieldType { background: transparent; border: 0; border-radius: 5px; }
+#FieldType:hover { background: $surface3; }
 #SendButton { border-radius: 9px; }
 #CancelSendButton { border: 1px solid $line_strong; border-radius: 9px; font-size: $fs13; font-weight: 600; }
 #MethodButton { border: 0; border-right: 1px solid $line; border-radius: 0; border-top-left-radius: 8px; border-bottom-left-radius: 8px; background: transparent; }
@@ -281,7 +286,7 @@ QLineEdit[cls="bare"] { background: transparent; border: 0; border-radius: 0; pa
 QLineEdit[cls="title"] { background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0 8px; font-size: $fs16; font-weight: 600; }
 QLineEdit[cls="title"]:hover, QLineEdit[cls="title"]:focus { border-color: $line; }
 QLineEdit[cls="inline"] { padding: 0 6px; border-color: $line_strong; border-radius: 5px; background: $surface2; }
-QLineEdit[mono="true"], QPlainTextEdit[mono="true"] { font-family: "Geist Mono", "Menlo", monospace; font-size: $fs12; }
+QLineEdit[mono="true"], QPlainTextEdit[mono="true"] { font-family: $mono_family; font-size: $fs12; }
 QFrame[cls="field"] { background: $bg; border: 1px solid $line; border-radius: 7px; }
 QFrame[cls="field-strong"] { background: $surface2; border: 1px solid $line_strong; border-radius: 8px; }
 QPlainTextEdit { background: $bg; border: 1px solid $line; border-radius: 8px; selection-background-color: $selection; selection-color: $fg; }
@@ -363,6 +368,7 @@ def build_style_sheet(t: Theme) -> str:
     on_disabled = t.c("on_accent")
     on_disabled.setAlphaF(0.6)
     values["on_accent_disabled"] = qss_color(on_disabled)
+    values["mono_family"] = css_families(mono=True)
     for px in _SIZES:
         values["fs" + str(px).replace(".", "_")] = f"{px_to_pt(px):.2f}pt"
     check = icons.svg("check", t.c("on_check").name(), stroke=3.2)
@@ -374,9 +380,15 @@ def build_style_sheet(t: Theme) -> str:
 
 
 def set_cls(widget: QWidget, cls: str) -> QWidget:
-    """Assign a style class (matched by [cls="..."] selectors) and re-polish."""
+    """Assign a style class (matched by [cls="..."] selectors).
+
+    Only widgets that are already polished get re-polished. Polishing a widget before it is shown makes
+    the style-sheet engine remember the default font and restore it on first show, which would discard a
+    font set with setFont() in between.
+    """
     widget.setProperty("cls", cls)
-    style = widget.style()
-    style.unpolish(widget)
-    style.polish(widget)
+    if widget.testAttribute(Qt.WidgetAttribute.WA_WState_Polished):
+        style = widget.style()
+        style.unpolish(widget)
+        style.polish(widget)
     return widget

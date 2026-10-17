@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (QButtonGroup, QFrame, QLabel, QLineEdit, QRadioButton, QScrollArea,
-                               QStackedWidget, QWidget)
+                               QSizePolicy, QStackedWidget, QWidget)
 
 from hitman.core.models import AUTH_LABELS, AUTH_TYPES, BODY_MODE_LABELS, BODY_MODES, RAW_TYPES, Auth, Request
 from hitman.ui.fonts import mono_font
@@ -71,6 +71,7 @@ class RequestEditor(QWidget):
         layout = vbox(self)
         tabs_frame = QFrame()
         tabs_frame.setObjectName("SectionTabs")
+        tabs_frame.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         tabs_layout = vbox(tabs_frame)
         self.tabs = UnderlineTabs(SECTIONS)
         self.tabs.changed.connect(self._on_section)
@@ -82,6 +83,8 @@ class RequestEditor(QWidget):
         self.pages.addWidget(self._build_auth())
         self.pages.addWidget(self._build_headers())
         self.pages.addWidget(self._build_body())
+        # May shrink to nothing so the section tabs stay whole when the response is maximized.
+        self.pages.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         layout.addWidget(self.pages, 1)
 
     # ================================================================ pages
@@ -226,7 +229,7 @@ class RequestEditor(QWidget):
 
         self.body_pages = QStackedWidget()
         none_box = self._dashed("This request does not have a body.", centered=True)
-        none_box.setMinimumHeight(160)
+        none_box.setMinimumHeight(60)
         self.body_pages.addWidget(none_box)
 
         form_page, form_body = _page()
@@ -234,7 +237,7 @@ class RequestEditor(QWidget):
         self._form_bulk = button("Bulk edit", "link-muted", on_click=lambda: self._toggle_bulk(self.form_table, self._form_bulk))
         form_title, self._form_hint = _title_row("Form fields", "", self._form_bulk)
         form_layout.addLayout(form_title)
-        self.form_table = KeyValueEditor()
+        self.form_table = KeyValueEditor(allow_files=True)
         self.form_table.changed.connect(lambda: self._edit("body"))
         form_layout.addWidget(self.form_table)
         form_layout.addStretch(1)
@@ -242,7 +245,7 @@ class RequestEditor(QWidget):
 
         self.editor = CodeEditor()
         self.editor.setAccessibleName("Request body")
-        self.editor.setMinimumHeight(250)
+        self.editor.setMinimumHeight(60)
         self.editor.textChanged.connect(self._on_body_text)
         self.editor.submit.connect(self.send)
         self.body_pages.addWidget(self.editor)
@@ -400,6 +403,7 @@ class RequestEditor(QWidget):
         self.raw_type.setVisible(mode == "raw")
         self._beautify.setVisible(mode == "raw" and self.request.raw_type == "JSON")
         self._form_hint.setText("multipart/form-data" if mode == "form" else "application/x-www-form-urlencoded")
+        self.form_table.set_files_enabled(mode == "form")
 
     def _open_raw_menu(self, anchor: QWidget) -> None:
         menu = PopoverMenu(self)

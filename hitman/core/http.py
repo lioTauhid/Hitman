@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import base64
+import mimetypes
 import threading
 import time
+from contextlib import ExitStack
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import requests
 
@@ -48,7 +51,8 @@ class ResolvedRequest:
     auth_headers: set[str] = field(default_factory=set)  # lower-cased header names added by auth
     body_kind: str = "none"  # none | raw | urlencoded | form
     body: str = ""
-    form: list[tuple[str, str]] = field(default_factory=list)
+    form: list[tuple[str, str]] = field(default_factory=list)   # text fields
+    files: list[tuple[str, str]] = field(default_factory=list)  # (field name, file path), form-data only
     raw_type: str = "JSON"
 
     def header(self, name: str) -> str | None:
@@ -148,9 +152,11 @@ def resolve_request(request: Request, scope: dict, collection_auth: Auth | None 
         if "content-type" not in present:
             resolved.headers.append(("Content-Type", RAW_CONTENT_TYPES.get(request.raw_type, "text/plain")))
     elif request.body_mode in ("urlencoded", "form"):
-        fields = [(resolve(f.key, scope), resolve(f.value, scope)) for f in request.form if f.enabled and f.key]
+        rows = [f for f in request.form if f.enabled and f.key]
         resolved.body_kind = request.body_mode
-        resolved.form = fields
+        resolved.form = [(resolve(f.key, scope), resolve(f.value, scope)) for f in rows if not f.is_file]
+        if request.body_mode == "form":  # url-encoded bodies can't carry files
+            resolved.files = [(resolve(f.key, scope), resolve(f.value, scope)) for f in rows if f.is_file and f.value]
     return resolved
 
 
@@ -194,13 +200,20 @@ def send(resolved: ResolvedRequest, options: SendOptions,
     for k, v in resolved.headers:
         headers[k] = v
 
+    open_files = ExitStack()
     data = files = None
     if resolved.body_kind == "raw":
         data = resolved.body.encode("utf-8")
     elif resolved.body_kind == "urlencoded":
         data = resolved.form
     elif resolved.body_kind == "form":
-        files = [(k, (None, v)) for k, v in resolved.form] or None
+        try:
+            files = _multipart_parts(resolved, open_files) or None
+        except OSError as exc:
+            open_files.close()
+            session.close()
+            return _error(resolved, time.perf_counter(),
+                          f"Can't read the file {exc.filename or ''}: {exc.strerror or exc}.")
         if files is None:
             data = b""
 
@@ -252,7 +265,19 @@ def send(resolved: ResolvedRequest, options: SendOptions,
     except (ValueError, UnicodeError) as exc:
         return _error(resolved, started, f"Invalid request: {exc}")
     finally:
+        open_files.close()
         session.close()
+
+
+def _multipart_parts(resolved: ResolvedRequest, open_files: ExitStack) -> list:
+    """Text fields and opened files in the shape `requests` expects for multipart bodies."""
+    parts: list = [(key, (None, value)) for key, value in resolved.form]
+    for key, path in resolved.files:
+        file_path = Path(path).expanduser()
+        handle = open_files.enter_context(open(file_path, "rb"))
+        content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        parts.append((key, (file_path.name, handle, content_type)))
+    return parts
 
 
 def _sniff_encoding(raw: requests.Response) -> str | None:

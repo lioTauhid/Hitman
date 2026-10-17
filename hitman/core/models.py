@@ -42,13 +42,20 @@ def method_short(method: str) -> str:
 @dataclass
 class KeyValue:
     key: str = ""
-    value: str = ""
+    value: str = ""          # for file rows: the path of the file to upload
     description: str = ""
     enabled: bool = True
+    type: str = "text"       # "text" or "file" (files only apply to form-data bodies)
+
+    @property
+    def is_file(self) -> bool:
+        return self.type == "file"
 
     def to_dict(self) -> dict:
-        return {"key": self.key, "value": self.value,
-                "description": self.description, "enabled": self.enabled}
+        data = {"key": self.key, "value": self.value, "description": self.description, "enabled": self.enabled}
+        if self.is_file:
+            data["type"] = "file"
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> KeyValue:
@@ -57,6 +64,7 @@ class KeyValue:
             value=str(data.get("value", "")),
             description=str(data.get("description", "")),
             enabled=bool(data.get("enabled", True)),
+            type="file" if data.get("type") == "file" else "text",
         )
 
 

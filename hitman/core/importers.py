@@ -94,7 +94,8 @@ def _method(value) -> str:
 
 def _kv_rows(rows) -> list[KeyValue]:
     return [KeyValue(key=_str(r.get("key")), value=_str(r.get("value")),
-                     description=_str(r.get("description")), enabled=r.get("enabled", True) is not False)
+                     description=_str(r.get("description")), enabled=r.get("enabled", True) is not False,
+                     type="file" if r.get("type") == "file" else "text")
             for r in rows or [] if isinstance(r, dict)]
 
 
@@ -163,6 +164,16 @@ def _pm_rows(rows) -> list[KeyValue]:
         out.append(KeyValue(key=_str(r.get("key")), value=_str(r.get("value")),
                             description=_str(desc), enabled=not r.get("disabled", False)))
     return out
+
+
+def _pm_form_row(row: dict) -> KeyValue:
+    """A Postman formdata entry; file entries keep their path ("src", sometimes a list)."""
+    item = _pm_rows([row])[0]
+    if row.get("type") == "file":
+        src = row.get("src")
+        item.value = _str(src[0] if isinstance(src, list) and src else src if isinstance(src, str) else "")
+        item.type = "file"
+    return item
 
 
 def _pm_auth(data, default: str) -> Auth:
@@ -234,7 +245,7 @@ def _pm_request(item: dict) -> Request:
         req.body_mode, req.form = "urlencoded", _pm_rows(body.get("urlencoded"))
     elif mode == "formdata":
         req.body_mode = "form"
-        req.form = _pm_rows([r for r in body.get("formdata") or [] if r.get("type", "text") == "text"])
+        req.form = [_pm_form_row(r) for r in body.get("formdata") or [] if isinstance(r, dict)]
     elif mode == "graphql":
         gql = body.get("graphql") or {}
         req.body_mode, req.raw_type = "raw", "JSON"
@@ -421,6 +432,16 @@ def _openapi_request(spec: _Spec, path: str, method: str, op: dict, shared: list
     return req
 
 
+def _is_binary(spec: _Spec, schema) -> bool:
+    """True for file fields: `format: binary` (or base64), also inside arrays."""
+    schema = spec.deref(schema)
+    if not isinstance(schema, dict):
+        return False
+    if schema.get("format") in ("binary", "base64"):
+        return True
+    return schema.get("type") == "array" and _is_binary(spec, schema.get("items", {}))
+
+
 def _param_value(example) -> str:
     if example is None or isinstance(example, (dict, list)):
         return ""
@@ -444,11 +465,15 @@ def _openapi_body(spec: _Spec, req: Request, content: dict) -> None:
         return
     for ctype, mode in (("application/x-www-form-urlencoded", "urlencoded"), ("multipart/form-data", "form")):
         if ctype in content:
-            sample = spec.example((content[ctype] or {}).get("schema", {}))
+            schema = spec.deref((content[ctype] or {}).get("schema", {}))
+            sample = spec.example(schema)
+            properties = (schema.get("properties") or {}) if isinstance(schema, dict) else {}
             req.body_mode = mode
             if isinstance(sample, dict):
-                req.form = [KeyValue(key=k, value="" if isinstance(v, (dict, list)) or v is None else _str(v))
-                            for k, v in sample.items()]
+                for key, value in sample.items():
+                    is_file = mode == "form" and _is_binary(spec, properties.get(key, {}))
+                    text = "" if is_file or isinstance(value, (dict, list)) or value is None else _str(value)
+                    req.form.append(KeyValue(key=key, value=text, type="file" if is_file else "text"))
             return
     xml_type = next((ct for ct in content if "xml" in ct), None)
     if xml_type:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import PurePath
 from urllib.parse import urlencode
 
 from hitman.core.http import ResolvedRequest
@@ -44,6 +45,10 @@ def _indent_tail(text: str, pad: str) -> str:
     return "\n".join([lines[0]] + [pad + line for line in lines[1:]])
 
 
+def _file_name(path: str) -> str:
+    return PurePath(path.replace("\\", "/")).name or "file"
+
+
 def generate(lang: str, req: ResolvedRequest, include_auth: bool = True) -> str:
     headers = [(k, v) for k, v in req.headers if include_auth or k.lower() not in req.auth_headers]
     gen = _GENERATORS.get(lang, _curl)
@@ -71,7 +76,9 @@ def _curl(req: ResolvedRequest, headers: list[tuple[str, str]]) -> str:
     elif req.body_kind == "urlencoded":
         parts += [f"  --data-urlencode {_sq(f'{k}={v}')}" for k, v in req.form]
     elif req.body_kind == "form":
-        parts += [f"  --form {_sq(f'{k}={v}')}" for k, v in req.form]
+        # --form treats values starting with @ or < as files, so such text goes through --form-string.
+        parts += [f"  --{'form-string' if v[:1] in '@<' else 'form'} {_sq(f'{k}={v}')}" for k, v in req.form]
+        parts += [f"  --form {_sq(f'{k}=@{path}')}" for k, path in req.files]
     return " \\\n".join(parts)
 
 
@@ -91,10 +98,19 @@ def _python(req: ResolvedRequest, headers: list[tuple[str, str]]) -> str:
             lines.append(f"payload = {_dq(req.body)}")
             body_arg = ", data=payload"
     elif req.body_kind in ("urlencoded", "form"):
-        lines.append("payload = {")
-        lines += [f"    {_dq(k)}: {_dq(v)}," for k, v in req.form]
-        lines.append("}")
-        body_arg = ", data=payload" if req.body_kind == "urlencoded" else ", files={k: (None, v) for k, v in payload.items()}"
+        if req.form:
+            lines.append("payload = {")
+            lines += [f"    {_dq(k)}: {_dq(v)}," for k, v in req.form]
+            lines.append("}")
+        if req.body_kind == "urlencoded":
+            body_arg = ", data=payload" if req.form else ""
+        elif req.files:
+            lines.append("files = [")
+            lines += [f"    ({_dq(k)}, open({_dq(path)}, \"rb\"))," for k, path in req.files]
+            lines.append("]")
+            body_arg = (", data=payload" if req.form else "") + ", files=files"
+        elif req.form:  # passing the fields as files makes requests send multipart/form-data
+            body_arg = ", files={k: (None, v) for k, v in payload.items()}"
     args = "url" + (", headers=headers" if headers else "") + body_arg
     lines += ["", f"response = requests.request({_dq(req.method)}, {args}, timeout=30)",
               "print(response.status_code)"]
@@ -129,8 +145,12 @@ def _to_python(value, indent: int = 0) -> str:
 def _fetch(req: ResolvedRequest, headers: list[tuple[str, str]]) -> str:
     lines = []
     if req.body_kind == "form":
+        if req.files:
+            lines += ['import { openAsBlob } from "node:fs";  // Node.js 19.8+; in a browser use a File object', ""]
         lines.append("const form = new FormData();")
         lines += [f"form.append({_dq(k)}, {_dq(v)});" for k, v in req.form]
+        lines += [f"form.append({_dq(k)}, await openAsBlob({_dq(path)}), {_dq(_file_name(path))});"
+                  for k, path in req.files]
         lines.append("")
     lines += [f"const response = await fetch({_dq(req.url)}, {{", f"  method: {_dq(req.method)},"]
     if headers:
@@ -164,12 +184,19 @@ def _go(req: ResolvedRequest, headers: list[tuple[str, str]]) -> str:
         text_body = urlencode(req.form)
     has_body = bool(text_body) or multipart
 
-    imports = ['"bytes"', '"fmt"', '"io"', '"mime/multipart"', '"net/http"'] if multipart else \
-        ['"fmt"', '"io"', '"net/http"'] + (['"strings"'] if text_body else [])
-    lines = ["package main", "", "import ("] + [f"\t{i}" for i in imports] + [")", "", "func main() {"]
+    if multipart:
+        imports = ['"bytes"', '"fmt"', '"io"', '"mime/multipart"', '"net/http"'] + (['"os"'] if req.files else [])
+    else:
+        imports = ['"fmt"', '"io"', '"net/http"'] + (['"strings"'] if text_body else [])
+    lines = ["package main", "", "import ("] + [f"\t{i}" for i in sorted(imports)] + [")", "", "func main() {"]
     if multipart:
         lines += ["\tbody := &bytes.Buffer{}", "\twriter := multipart.NewWriter(body)"]
         lines += [f"\twriter.WriteField({_dq(k)}, {_dq(v)})" for k, v in req.form]
+        for key, path in req.files:
+            lines += ["\t{", f"\t\tfile, err := os.Open({_dq(path)})", "\t\tif err != nil {", "\t\t\tpanic(err)", "\t\t}",
+                      f"\t\tpart, err := writer.CreateFormFile({_dq(key)}, {_dq(_file_name(path))})",
+                      "\t\tif err != nil {", "\t\t\tpanic(err)", "\t\t}", "\t\tio.Copy(part, file)",
+                      "\t\tfile.Close()", "\t}"]
         lines += ["\twriter.Close()", ""]
     elif text_body:
         lines.append("\tbody := strings.NewReader(`" + _indent_tail(text_body.replace("`", "` + \"`\" + `"), "\t") + "`)")
@@ -190,7 +217,17 @@ def _dart(req: ResolvedRequest, headers: list[tuple[str, str]]) -> str:
     fn = {"GET": "get", "POST": "post", "PUT": "put", "PATCH": "patch", "DELETE": "delete", "HEAD": "head"}.get(req.method)
     lines = ["import 'dart:convert';", "import 'package:http/http.dart' as http;", "",
              "Future<void> main() async {"]
-    if fn:
+    if req.body_kind == "form":
+        lines.append(f"  final request = http.MultipartRequest({_dart_q(req.method)}, Uri.parse({_dart_q(req.url)}));")
+        if headers:
+            lines.append("  request.headers.addAll({")
+            lines += [f"    {_dart_q(k)}: {_dart_q(v)}," for k, v in headers]
+            lines.append("  });")
+        lines += [f"  request.fields[{_dart_q(k)}] = {_dart_q(v)};" for k, v in req.form]
+        lines += [f"  request.files.add(await http.MultipartFile.fromPath({_dart_q(k)}, {_dart_q(path)}));"
+                  for k, path in req.files]
+        lines.append("  final response = await http.Response.fromStream(await request.send());")
+    elif fn:
         lines += [f"  final response = await http.{fn}(", f"    Uri.parse({_dart_q(req.url)}),"]
         if headers:
             lines.append("    headers: {")
@@ -204,7 +241,7 @@ def _dart(req: ResolvedRequest, headers: list[tuple[str, str]]) -> str:
                     lines.append(f"    body: jsonEncode({_indent_tail(pretty, '    ')}),")
                 else:
                     lines.append(f"    body: {_dart_q(req.body)},")
-            elif req.body_kind in ("urlencoded", "form"):
+            elif req.body_kind == "urlencoded":
                 lines.append("    body: {")
                 lines += [f"      {_dart_q(k)}: {_dart_q(v)}," for k, v in req.form]
                 lines.append("    },")

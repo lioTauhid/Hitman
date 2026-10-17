@@ -42,6 +42,8 @@ def _kv_list(rows: list[KeyValue]) -> list[dict]:
             item["description"] = row.description
         if not row.enabled:
             item["enabled"] = False
+        if row.is_file:
+            item["type"] = "file"
         out.append(item)
     return out
 
@@ -106,6 +108,16 @@ def _pm_kv(rows: list[KeyValue]) -> list[dict]:
     return out
 
 
+def _pm_form_row(row: KeyValue) -> dict:
+    item = _pm_kv([row])[0]
+    if row.is_file:
+        item.pop("value")
+        item.update(type="file", src=row.value)
+    else:
+        item["type"] = "text"
+    return item
+
+
 def _pm_auth(auth: Auth) -> dict | None:
     if auth.type == "none":
         return {"type": "noauth"}
@@ -140,8 +152,7 @@ def _pm_request(req: Request) -> dict:
     elif req.body_mode == "urlencoded":
         request["body"] = {"mode": "urlencoded", "urlencoded": _pm_kv(req.form)}
     elif req.body_mode == "form":
-        request["body"] = {"mode": "formdata",
-                           "formdata": [dict(row, type="text") for row in _pm_kv(req.form)]}
+        request["body"] = {"mode": "formdata", "formdata": [_pm_form_row(row) for row in req.form]}
     return {"name": req.name, "request": request}
 
 

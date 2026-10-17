@@ -63,7 +63,6 @@ class CodeDialog(OverlayDialog):
         bar_layout.addWidget(self.stats)
         right.addWidget(bar)
         self.view = CodeEditor(read_only=True, framed=False, gutter_border=False)
-        self.view.setStyleSheet("QPlainTextEdit { border-bottom-right-radius: 0; }")
         right.addWidget(self.view, 1)
         content.addLayout(right, 1)
         self.card_layout.addLayout(content, 1)

@@ -71,3 +71,18 @@ def test_generate_form_bodies():
     assert "--form 'a=1'" in generate("curl", resolved)
     assert "multipart.NewWriter" in generate("go", resolved)
     ast.parse(generate("python", resolved))
+
+
+def test_parse_curl_windows_cmd_format():
+    command = ('curl ^"https://api.example.com/v1/orders?x=1^&y=2^" ^\n'
+               '  -H ^"accept: application/json^" ^\n'
+               '  --data-raw ^"^{^\\^"a^\\^":1^}^"')
+    req = parse_curl(command)
+    assert req.url == "https://api.example.com/v1/orders?x=1&y=2"
+    assert ("accept", "application/json") in [(h.key, h.value) for h in req.headers]
+    assert req.body == '{"a":1}' and req.method == "POST"
+
+
+def test_parse_curl_powershell_continuations():
+    req = parse_curl('curl.exe https://x.dev/a `\n  -H "A: b" `\n  -X DELETE')
+    assert req.method == "DELETE" and req.headers[0].key == "A"

@@ -38,10 +38,18 @@ def _ansi_c_quotes(text: str) -> str:
     return re.sub(r"\$'((?:[^'\\]|\\.)*)'", repl, text)
 
 
+def _from_cmd_exe(text: str) -> str:
+    """Windows "Copy as cURL (cmd)": ^ escapes the next character and ends continued lines."""
+    text = re.sub(r"\^\r?\n", " ", text)
+    return re.sub(r"\^(.)", r"\1", text)
+
+
 def _tokenize(command: str) -> list[str]:
     text = command.strip()
+    if re.search(r"\^\r?\n", text) or '^"' in text:
+        text = _from_cmd_exe(text)
     text = re.sub(r"\\\r?\n", " ", text)   # bash line continuations
-    text = re.sub(r"\^\r?\n", " ", text)   # cmd.exe line continuations
+    text = re.sub(r"`\r?\n", " ", text)     # PowerShell line continuations
     text = _ansi_c_quotes(text)
     try:
         return shlex.split(text)
@@ -108,6 +116,8 @@ def parse_curl(command: str) -> Request:
             key, sep, val = value().partition("=")
             urlencoded.append(KeyValue(key=key, value=val) if sep else KeyValue(key="", value=key))
         elif tok in ("-F", "--form"):
+            form.append(_form_field(value()))
+        elif tok == "--form-string":
             key, _, val = value().partition("=")
             form.append(KeyValue(key=key, value=val))
         elif tok in ("-u", "--user"):
@@ -157,6 +167,15 @@ def parse_curl(command: str) -> Request:
     path = split_url(url)[0]
     request.name = re.sub(r"^[a-z]+://[^/]+", "", path) or path or "Imported request"
     return request
+
+
+def _form_field(spec: str) -> KeyValue:
+    """A -F value: `key=text`, or `key=@path[;type=...;filename=...]` for a file upload."""
+    key, _, val = spec.partition("=")
+    if val.startswith("@"):
+        path = val[1:].split(";", 1)[0].strip('"')
+        return KeyValue(key=key, value=path, type="file")
+    return KeyValue(key=key, value=val)
 
 
 def _pairs(text: str) -> list[KeyValue]:

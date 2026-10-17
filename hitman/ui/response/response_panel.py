@@ -6,8 +6,8 @@ import sys
 
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QGuiApplication, QPainter, QPen, QTextCursor, QTextDocument
-from PySide6.QtWidgets import (QFrame, QHeaderView, QLabel, QLineEdit, QStackedWidget, QTableWidget,
-                               QTableWidgetItem, QWidget)
+from PySide6.QtWidgets import (QFrame, QHeaderView, QLabel, QLineEdit, QSizePolicy, QStackedWidget,
+                               QTableWidget, QTableWidgetItem, QWidget)
 
 from hitman.core.formatting import detect_format, human_bytes, pretty_body
 from hitman.core.http import HttpResponse
@@ -124,6 +124,8 @@ class ResponsePanel(QFrame):
         self.stack.addWidget(self._build_error())
         self.stack.addWidget(self._build_body())
         self.stack.addWidget(self._build_headers())
+        # May shrink to nothing so the header row stays whole when the request pane is enlarged.
+        self.stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         layout.addWidget(self.stack, 1)
         self.set_tab(None)
 

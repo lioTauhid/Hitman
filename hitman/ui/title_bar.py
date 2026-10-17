@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QAbstractButton, QFrame, QLabel, QSizePolicy, QWidget
+from PySide6.QtWidgets import QAbstractButton, QApplication, QFrame, QLabel, QSizePolicy, QWidget
 
 from hitman import APP_NAME
 from hitman.ui import icons
@@ -70,10 +70,15 @@ class TitleBar(QFrame):
     toggle_theme = Signal()
     open_settings = Signal()
 
+    HEIGHT = 40
+
     def __init__(self, *, custom_controls: bool, left_inset: int = 0, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("TitleBar")
-        self.setFixedHeight(40)
+        self.setFixedHeight(self.HEIGHT)
+        self._custom_controls = custom_controls
+        self._press_pos: QPoint | None = None
+        self._window_origin = QPoint()
         layout = hbox(self, (12 + left_inset, 0, 0 if custom_controls else 8, 0), 6)
         layout.addWidget(app_logo())
         layout.addSpacing(3)
@@ -121,14 +126,38 @@ class TitleBar(QFrame):
     def _close(self) -> None:
         self.window().close()
 
+    def set_left_inset(self, inset: int) -> None:
+        """Leave room on the left (for the macOS window buttons)."""
+        margins = self.layout().contentsMargins()
+        self.layout().setContentsMargins(12 + inset, margins.top(), margins.right(), margins.bottom())
+
+    # Dragging starts after a small move rather than on press, so double-click (maximize) still works.
     def mousePressEvent(self, event) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton and self.window().windowHandle():
-            self.window().windowHandle().startSystemMove()
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._press_pos = event.globalPosition().toPoint()
+            self._window_origin = self.window().pos()
             event.accept()
             return
         super().mousePressEvent(event)
 
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self._press_pos is None or not event.buttons() & Qt.MouseButton.LeftButton:
+            return
+        delta = event.globalPosition().toPoint() - self._press_pos
+        if delta.manhattanLength() < QApplication.startDragDistance():
+            return
+        handle = self.window().windowHandle()
+        if handle is not None and handle.startSystemMove():
+            self._press_pos = None  # the window manager owns the drag now (snapping works)
+        elif not self.window().isMaximized():
+            self.window().move(self._window_origin + delta)  # fallback for window managers without support
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._press_pos = None
+        super().mouseReleaseEvent(event)
+
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
+            self._press_pos = None
             self._toggle_maximize()
             event.accept()

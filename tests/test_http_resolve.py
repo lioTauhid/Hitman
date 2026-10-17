@@ -68,6 +68,7 @@ def server():
     thread.start()
     yield f"http://127.0.0.1:{httpd.server_port}"
     httpd.shutdown()
+    httpd.server_close()
 
 
 def test_send_roundtrip(server):

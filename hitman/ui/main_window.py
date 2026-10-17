@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import sys
+import warnings
 
 from PySide6.QtCore import QByteArray, QEvent, QObject, QPoint, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
@@ -14,6 +14,7 @@ from hitman.core.models import AUTH_LABELS, Collection
 from hitman.services.runner import RequestRunner
 from hitman.services.session import OpenTab, Session
 from hitman.services.workspace import Workspace
+from hitman.ui import native
 from hitman.ui.controller import Controller
 from hitman.ui.rail import Rail
 from hitman.ui.request.request_panel import RequestPanel
@@ -43,7 +44,7 @@ class MainWindow(QMainWindow):
 
         root = QWidget()
         root.setObjectName("Root")
-        root.setAttribute(Qt.WidgetAttribute.WA_ContentsMarginsRespectsSafeArea, False)
+        _ignore_safe_area(root)
         self.setCentralWidget(root)
         layout = vbox(root)
         self.title_bar = TitleBar(custom_controls=custom_controls, left_inset=inset)
@@ -76,26 +77,71 @@ class MainWindow(QMainWindow):
         self.toast = Toast(root)
 
         self.controller = Controller(self)
+        self._shown_once = False
         self._persist_timer = QTimer(self)
         self._persist_timer.setSingleShot(True)
         self._persist_timer.setInterval(800)
         self._persist_timer.timeout.connect(self.persist_session)
+        self._split_timer = QTimer(self)
+        self._split_timer.setSingleShot(True)
+        self._split_timer.setInterval(400)
+        self._split_timer.timeout.connect(
+            lambda: self.workspace.set_ui_state("split", self.request_panel.split_ratios()))
         self._connect()
         self._install_shortcuts()
         self._restore()
 
     # -------------------------------------------------------------- frame
     def _setup_frame(self) -> tuple[bool, int]:
-        """macOS keeps its traffic lights inside our title bar; elsewhere we draw our own controls."""
-        if sys.platform == "darwin":
-            self.setWindowFlag(Qt.WindowType.ExpandedClientAreaHint, True)
+        """macOS keeps its native window buttons inside our title bar; Windows and Linux get our own."""
+        self._mac_expanded = False
+        if native.IS_MAC:
+            if not hasattr(Qt.WindowType, "ExpandedClientAreaHint"):  # Qt < 6.9: keep the standard title bar
+                return False, 0
+            with warnings.catch_warnings():
+                # PySide reports this flag under a deprecated alias that shares its value; it's not deprecated.
+                warnings.simplefilter("ignore", DeprecationWarning)
+                self.setWindowFlag(Qt.WindowType.ExpandedClientAreaHint, True)
             self.setWindowFlag(Qt.WindowType.NoTitleBarBackgroundHint, True)
-            self.setAttribute(Qt.WidgetAttribute.WA_ContentsMarginsRespectsSafeArea, False)
+            _ignore_safe_area(self)
+            self._mac_expanded = True
             return False, TRAFFIC_LIGHTS_INSET
-        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint
+                            | Qt.WindowType.WindowMinMaxButtonsHint)
         self._resizer = _EdgeResizer(self)
         QApplication.instance().installEventFilter(self._resizer)
         return True, 0
+
+    def _sync_mac_title_bar(self) -> None:
+        """Fit the title bar around the traffic lights; full screen hides them, so use the full design."""
+        handle = self.windowHandle()
+        if not self._mac_expanded or handle is None:
+            return
+        native.hide_native_title(self)
+        top = handle.safeAreaMargins().top() if hasattr(handle, "safeAreaMargins") else 0
+        if top >= 24 and not self.isFullScreen():
+            self.title_bar.setFixedHeight(top)
+            right = native.traffic_lights_right_edge(self)
+            self.title_bar.set_left_inset(right + 4 if right else TRAFFIC_LIGHTS_INSET)
+        else:
+            self.title_bar.setFixedHeight(TitleBar.HEIGHT)
+            self.title_bar.set_left_inset(0)
+
+    def _sync_frame_border(self) -> None:
+        """Frameless windows get a hairline border so their edge is visible, except when maximized."""
+        root = self.centralWidget()
+        framed = bool(self.windowFlags() & Qt.WindowType.FramelessWindowHint) and not (
+            self.isMaximized() or self.isFullScreen())
+        if root is not None and root.property("framed") != framed:
+            root.setProperty("framed", framed)
+            root.style().unpolish(root)
+            root.style().polish(root)
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._sync_frame_border()
+            QTimer.singleShot(0, self._sync_mac_title_bar)
 
     # ------------------------------------------------------------- wiring
     def _connect(self) -> None:
@@ -146,6 +192,7 @@ class MainWindow(QMainWindow):
         rp.curl_pasted.connect(c.paste_curl)
         rp.notify.connect(lambda title, sub, error: self.notify(title, sub, error=error))
         rp.save_response.connect(c.save_response)
+        rp.split_changed.connect(lambda _ratios: self._split_timer.start())
 
     def _install_shortcuts(self) -> None:
         c = self.controller
@@ -165,6 +212,7 @@ class MainWindow(QMainWindow):
     def _restore(self) -> None:
         ws = self.workspace
         self.collections_panel.expanded = set(ws.ui_state("expanded", []))
+        self.request_panel.set_split_ratios(ws.ui_state("split", {}))
         geometry = ws.ui_state("geometry")
         if geometry:
             self.restoreGeometry(QByteArray.fromBase64(geometry.encode()))
@@ -180,11 +228,14 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
-        if sys.platform == "darwin" and self.windowHandle():
-            # Match the title bar to the system's title area so the traffic lights sit centered in it.
-            top = self.windowHandle().safeAreaMargins().top()
-            if top >= 24:
-                self.title_bar.setFixedHeight(top)
+        if not self._shown_once:
+            self._shown_once = True
+            handle = self.windowHandle()
+            if self._mac_expanded and handle is not None and hasattr(handle, "safeAreaMarginsChanged"):
+                handle.safeAreaMarginsChanged.connect(self._sync_mac_title_bar)
+            self._sync_mac_title_bar()
+            self._sync_frame_border()
+            QTimer.singleShot(0, self.request_panel.apply_split)
 
     def persist_session(self) -> None:
         if self.workspace.settings.restore_tabs:
@@ -294,6 +345,13 @@ class MainWindow(QMainWindow):
     def _focus_search(self) -> None:
         self.show_section("collections")
         self.collections_panel.focus_filter()
+
+
+def _ignore_safe_area(widget: QWidget) -> None:
+    """Lay out under the macOS title bar instead of below it (Qt 6.9+)."""
+    attribute = getattr(Qt.WidgetAttribute, "WA_ContentsMarginsRespectsSafeArea", None)
+    if attribute is not None:
+        widget.setAttribute(attribute, False)
 
 
 class _EdgeResizer(QObject):

@@ -79,3 +79,33 @@ def test_curl_paste_is_detected(app):
     mime.setText("https://x.dev/a\n")
     edit.insertFromMimeData(mime)
     assert edit.toPlainText() == "https://x.dev/a"
+
+
+def test_form_editor_file_fields(app):
+    from hitman.ui.widgets.key_value import KeyValueEditor
+
+    editor = KeyValueEditor(allow_files=True)
+    rows = [KeyValue("name", "Jo"), KeyValue("avatar", "/tmp/me.png", type="file")]
+    editor.set_rows(rows)
+    assert editor.rows() == rows
+    assert editor._rows[1].file_field.path() == "/tmp/me.png"
+
+    # Choosing "File" on the ghost row turns it into a real row with an empty file.
+    ghost = editor._rows[-1]
+    ghost.set_type("file", user=True)
+    assert not ghost.ghost and editor._rows[-1].ghost
+    assert editor.rows()[-1] == KeyValue("", "", type="file")
+
+    # Switching a field back to text keeps the text it had before.
+    editor._rows[0].set_type("file", user=True)
+    editor._rows[0].set_type("text", user=True)
+    assert editor.rows()[0] == KeyValue("name", "Jo")
+
+    # Bulk edit shows plain key: value lines but keeps file fields as files.
+    editor.set_bulk(True)
+    assert "avatar: /tmp/me.png" in editor.bulk.toPlainText()
+    editor.set_bulk(False)
+    assert editor.rows()[1] == KeyValue("avatar", "/tmp/me.png", type="file")
+
+    editor.set_files_enabled(False)  # url-encoded: no type picker
+    assert editor._rows[0].type_button.isHidden()

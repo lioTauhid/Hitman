@@ -23,6 +23,10 @@ from hitman.ui.widgets.popover import PopoverMenu
 
 
 class _Handle(QSplitterHandle):
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.splitter().toggle_maximized()
+
     def paintEvent(self, _event) -> None:  # noqa: N802
         t = theme()
         painter = QPainter(self)
@@ -43,11 +47,30 @@ class _Handle(QSplitterHandle):
 
 
 class Splitter(QSplitter):
+    """Request/response splitter. The response can grow until only the request's section tabs remain."""
+
     def __init__(self, orientation: Qt.Orientation, parent: QWidget | None = None):
         super().__init__(orientation, parent)
         self.setHandleWidth(9)
         self.setChildrenCollapsible(False)
+        self.setOpaqueResize(True)
+        self._restore_sizes: list[int] | None = None
         manager().changed.connect(self._repaint_handles)
+
+    def toggle_maximized(self) -> None:
+        """Give the second pane (the response) all the room it can get, or put the split back."""
+        first = self.widget(0)
+        minimum = first.minimumHeight() if self.orientation() == Qt.Orientation.Vertical else first.minimumWidth()
+        sizes = self.sizes()
+        total = sum(sizes)
+        if sizes[0] > minimum + 2:
+            self._restore_sizes = sizes
+            self.setSizes([minimum, total - minimum])
+        else:
+            restore = self._restore_sizes or [round(total * DEFAULT_SPLIT), total - round(total * DEFAULT_SPLIT)]
+            self.setSizes(restore)
+            self._restore_sizes = None
+        self.splitterMoved.emit(self.sizes()[0], 1)
 
     def _repaint_handles(self) -> None:
         for i in range(self.count()):
@@ -57,8 +80,16 @@ class Splitter(QSplitter):
         return _Handle(self.orientation(), self)
 
 
+DEFAULT_SPLIT = 100 / 215  # request share of the splitter, as in the design (1 : 1.15)
+
+# The smallest the panes may get: the request keeps its section tabs, the response its header row.
+REQUEST_MIN = (220, 37)
+RESPONSE_MIN = (260, 41)
+
+
 class RequestPanel(QFrame):
     draft_changed = Signal(str)       # tab id
+    split_changed = Signal(dict)      # {"stacked": ratio, "side": ratio}
     send = Signal()
     cancel = Signal()
     save = Signal()
@@ -102,10 +133,15 @@ class RequestPanel(QFrame):
         self.response.cancel.connect(self.cancel)
         self.response.notify.connect(lambda title, sub: self.notify.emit(title, sub, False))
         self.response.save_requested.connect(self.save_response)
+        # Explicit minimums override the (much larger) minimums of the panes' contents.
+        self.editor.setMinimumSize(*REQUEST_MIN)
+        self.response.setMinimumSize(*RESPONSE_MIN)
         self.splitter.addWidget(self.editor)
         self.splitter.addWidget(self.response)
         self.splitter.setStretchFactor(0, 100)
         self.splitter.setStretchFactor(1, 115)
+        self.splitter.splitterMoved.connect(self._on_split_moved)
+        self._ratios = {"stacked": DEFAULT_SPLIT, "side": DEFAULT_SPLIT}
         layout.addWidget(self.splitter, 1)
 
     # -------------------------------------------------------------- binding
@@ -140,8 +176,32 @@ class RequestPanel(QFrame):
 
     def set_layout(self, side_by_side: bool) -> None:
         self.splitter.setOrientation(Qt.Orientation.Horizontal if side_by_side else Qt.Orientation.Vertical)
-        total = self.splitter.width() if side_by_side else self.splitter.height()
-        self.splitter.setSizes([int(total * 100 / 215), int(total * 115 / 215)])
+        self.apply_split()
+
+    def set_split_ratios(self, ratios: dict) -> None:
+        for key in ("stacked", "side"):
+            value = ratios.get(key) if isinstance(ratios, dict) else None
+            if isinstance(value, (int, float)) and 0 < value < 1:
+                self._ratios[key] = float(value)
+
+    def split_ratios(self) -> dict:
+        return dict(self._ratios)
+
+    def _layout_key(self) -> str:
+        return "side" if self.splitter.orientation() == Qt.Orientation.Horizontal else "stacked"
+
+    def apply_split(self) -> None:
+        """Size the panes from the remembered ratio for the current orientation."""
+        total = sum(self.splitter.sizes()) or (
+            self.splitter.width() if self._layout_key() == "side" else self.splitter.height())
+        first = round(total * self._ratios[self._layout_key()])
+        self.splitter.setSizes([first, max(0, total - first)])
+
+    def _on_split_moved(self, _pos: int, _index: int) -> None:
+        sizes = self.splitter.sizes()
+        if sum(sizes) > 0:
+            self._ratios[self._layout_key()] = sizes[0] / sum(sizes)
+            self.split_changed.emit(self.split_ratios())
 
     # ---------------------------------------------------------------- edits
     def _changed(self) -> None:
