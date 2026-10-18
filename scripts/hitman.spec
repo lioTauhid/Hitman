@@ -8,7 +8,7 @@ from pathlib import Path
 from PyInstaller.depend import bindepend
 
 ROOT = Path(SPECPATH).parent  # noqa: F821 (SPECPATH is provided by PyInstaller)
-ICON = ROOT / "build" / "icon.png"
+ICON = ROOT / "build" / "hitman-512.png"
 sys.path.insert(0, str(ROOT))
 from hitman import __version__  # noqa: E402
 

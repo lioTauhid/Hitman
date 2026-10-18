@@ -32,18 +32,28 @@ Get the latest version from the **[Releases page](https://github.com/lioTauhid/H
 | --- | --- |
 | Mac with Apple silicon (macOS 14+) | `Hitman-<version>-macos-arm64.zip` |
 | Mac with Intel (macOS 14+) | `Hitman-<version>-macos-x64.zip` |
-| Windows 10 / 11 | `Hitman-<version>-windows-x64.zip` |
-| Linux (64-bit) | `Hitman-<version>-linux-x64.tar.gz` |
+| Windows 10 / 11 | `Hitman-<version>-windows-x64-setup.exe` (installer) or `Hitman-<version>-windows-x64.zip` (portable) |
+| Ubuntu, Debian, Linux Mint, Pop!_OS (64-bit) | `hitman_<version>_amd64.deb` |
+| Other Linux (64-bit) | `Hitman-<version>-linux-x64.tar.gz` |
 
 ## Install
 
 **macOS:** unzip and drag **Hitman** to **Applications**. On first launch, macOS warns that it can't
 verify the app. Go to **System Settings → Privacy & Security** and click **Open Anyway**.
 
-**Windows:** extract the zip and run **Hitman.exe** (keep it next to the `_internal` folder). If Windows
-shows *"Windows protected your PC"*, click **More info → Run anyway**.
+**Windows:** run the **setup.exe** and follow the steps. It installs for your user without admin rights
+and adds Hitman to the Start menu; uninstall it from **Settings → Apps**. If Windows shows *"Windows
+protected your PC"*, click **More info → Run anyway**. For the portable zip, extract it and run
+**Hitman.exe** (keep it next to the `_internal` folder).
 
-**Linux:** extract and run:
+**Ubuntu / Debian:** install the package (apt also installs the system libraries it needs), then open
+Hitman from your app menu or run `hitman`. Remove it with `sudo apt remove hitman`.
+
+```bash
+sudo apt install ./hitman_*_amd64.deb
+```
+
+**Other Linux:** extract and run:
 
 ```bash
 tar -xzf Hitman-*-linux-x64.tar.gz && ./Hitman/Hitman
@@ -125,8 +135,8 @@ Hitman sends nothing anywhere except the requests you make. To update, replace t
 
 - **SSL certificate error** (common with local servers): turn off **Settings → Requests → Verify SSL
   certificates**.
-- **Linux: "could not load the Qt platform plugin xcb":** install `libxcb-cursor0` (Debian/Ubuntu) or
-  `xcb-util-cursor` (Fedora, Arch).
+- **Linux: "could not load the Qt platform plugin xcb":** install `libxcb-cursor0` (Debian/Ubuntu; the
+  .deb does this for you) or `xcb-util-cursor` (Fedora, Arch).
 - **Something else?** [Open an issue](https://github.com/lioTauhid/Hitman/issues).
 
 ## Build from source
@@ -149,20 +159,28 @@ you may first need `sudo apt install python3-venv libxcb-cursor0 libegl1`.
 | `make test` | Run the test suite |
 | `make lint` | Check the code with pyflakes |
 | `make check` | Lint, then test |
-| `make build` | Build the standalone app and a release archive into `dist/` |
+| `make build` | Build the standalone app and a portable archive into `dist/` |
+| `make package` | `make build`, plus the installer for this OS (Windows setup.exe, Linux .deb) |
 | `make clean` | Remove build output and caches |
 | `make distclean` | Also remove the virtual environment |
 
 `make build` packages Hitman with PyInstaller for the system you run it on, leaving out the parts of Qt
-the app doesn't use. It produces the app plus a ready-to-upload release archive:
+the app doesn't use. `make package` adds the installer. Everything lands in `dist/`, ready to upload to
+a GitHub release:
 
-| OS | App | Release archive |
-| --- | --- | --- |
-| macOS | `dist/Hitman.app` | `Hitman-<version>-macos-<arch>.zip` |
-| Windows | `dist/Hitman/Hitman.exe` | `Hitman-<version>-windows-x64.zip` |
-| Linux | `dist/Hitman/Hitman` | `Hitman-<version>-linux-x64.tar.gz` |
+| OS | App | Portable archive (`make build`) | Installer (`make package`) |
+| --- | --- | --- | --- |
+| macOS | `Hitman.app` | `Hitman-<version>-macos-<arch>.zip` | none: the zip is the release file |
+| Windows | `Hitman/Hitman.exe` | `Hitman-<version>-windows-x64.zip` | `Hitman-<version>-windows-x64-setup.exe` |
+| Linux | `Hitman/Hitman` | `Hitman-<version>-linux-x64.tar.gz` | `hitman_<version>_amd64.deb` |
 
 PyInstaller doesn't cross-compile, so build each platform on that platform.
+
+- **Windows installer:** needs [Inno Setup](https://jrsoftware.org/isdl.php) 6.3 or newer
+  (`winget install JRSoftware.InnoSetup`). The script is `scripts/hitman.iss`.
+- **Linux .deb:** built with plain Python, so no dpkg tools are needed and any distribution works. It
+  installs the app to `/opt/hitman`, with a `hitman` command, a menu entry and icons. The maintainer
+  field comes from your git name and email; set `HITMAN_MAINTAINER="Name <email>"` to override it.
 
 Without make:
 
@@ -193,6 +211,8 @@ hitman/
     native.py  Small OS integrations (macOS title bar, Windows taskbar identity)
   assets/      Bundled Geist fonts
 scripts/       build.py and hitman.spec: the standalone app build
+               hitman.iss: the Windows installer (Inno Setup)
+               deb_package.py and hitman.desktop: the Linux .deb package
 tests/         Unit tests and offscreen UI tests
 docs/          Screenshots used in this README
 ```

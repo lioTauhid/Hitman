@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Hitman
+GenericName=API Client
+Comment=Lightweight desktop API client
+Exec=hitman
+Icon=hitman
+Terminal=false
+Categories=Development;Network;
+Keywords=api;rest;http;request;postman;curl;
+StartupNotify=true
+StartupWMClass=Hitman

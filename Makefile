@@ -20,7 +20,7 @@ endif
 STAMP := $(VENV)/.installed
 
 .DEFAULT_GOAL := help
-.PHONY: help venv install run test lint check build clean distclean
+.PHONY: help venv install run test lint check build package clean distclean
 
 help: ## List the available targets
 	@"$(PYTHON)" -c "import re; print('Usage: make <target>\n'); [print(f'  {t:<10} {d}') for t, d in re.findall(r'^([a-z]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -49,9 +49,13 @@ lint: $(STAMP) ## Check the code with pyflakes
 
 check: lint test ## Lint, then test
 
-build: $(STAMP) ## Build the standalone app and a release archive into dist/
+build: $(STAMP) ## Build the standalone app and a portable archive into dist/
 	"$(PY)" -m pip install -e ".[build]"
 	"$(PY)" scripts/build.py
+
+package: $(STAMP) ## Build, plus this OS's installer (Windows setup.exe, Linux .deb)
+	"$(PY)" -m pip install -e ".[build]"
+	"$(PY)" scripts/build.py --package
 
 clean: ## Remove build output and caches
 	"$(PYTHON)" -c "import pathlib, shutil; [shutil.rmtree(p, ignore_errors=True) for p in ['build', 'dist', '.pytest_cache', 'hitman.egg-info']]; [shutil.rmtree(p, ignore_errors=True) for p in pathlib.Path('.').rglob('__pycache__') if '$(VENV)' not in p.parts]"

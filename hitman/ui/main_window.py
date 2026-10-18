@@ -55,7 +55,7 @@ class MainWindow(QMainWindow):
         work.addWidget(self.rail)
         self.sidebar = QStackedWidget()
         self.sidebar.setObjectName("Sidebar")
-        self.sidebar.setFixedWidth(290)
+        self.sidebar.setFixedWidth(260)
         self.collections_panel = CollectionsPanel()
         self.environments_panel = EnvironmentsPanel()
         self.history_panel = HistoryPanel()

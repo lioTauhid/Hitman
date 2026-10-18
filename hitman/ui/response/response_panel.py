@@ -23,6 +23,49 @@ from hitman.ui.widgets.tabs import UnderlineTabs
 MOD = "⌘" if sys.platform == "darwin" else "Ctrl"
 
 
+class _CenteredPage(QWidget):
+    """Content centered in the pane that adapts to its size.
+
+    Wrapped labels are centered with stretches (not an alignment flag) so they get the height their
+    lines need. When the pane is too short, `optional` widgets hide, first one first.
+    """
+
+    def __init__(self, widgets: list[QWidget], *, spacing: int = 10, optional: tuple[QWidget, ...] = ()):
+        super().__init__()
+        self._widgets, self._optional, self._spacing = widgets, optional, spacing
+        outer = vbox(self, (24, 16, 24, 16))
+        outer.addStretch(1)
+        inner = vbox(spacing=spacing)
+        for widget in widgets:
+            if isinstance(widget, QLabel) and widget.wordWrap():
+                row = hbox()
+                row.addStretch(1)
+                row.addWidget(widget, 100)
+                row.addStretch(1)
+                inner.addLayout(row)
+            else:
+                inner.addWidget(widget, 0, Qt.AlignmentFlag.AlignHCenter)
+        outer.addLayout(inner)
+        outer.addStretch(1)
+
+    def _needed_height(self, hidden: set[QWidget]) -> int:
+        margins = self.layout().contentsMargins()
+        width = self.width() - margins.left() - margins.right()
+        heights = [w.heightForWidth(min(width, w.maximumWidth())) if isinstance(w, QLabel) and w.wordWrap()
+                   else w.sizeHint().height() for w in self._widgets if w not in hidden]
+        return margins.top() + margins.bottom() + sum(heights) + self._spacing * max(0, len(heights) - 1)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        hidden: set[QWidget] = set()
+        for widget in self._optional:
+            if self._needed_height(hidden) <= self.height():
+                break
+            hidden.add(widget)
+        for widget in self._optional:
+            widget.setVisible(widget not in hidden)
+
+
 class _EmptyArt(QWidget):
     """The 'no response yet' illustration from the design."""
 
@@ -130,22 +173,11 @@ class ResponsePanel(QFrame):
         self.set_tab(None)
 
     # ------------------------------------------------------------- pages
-    def _centered(self, *widgets: QWidget, spacing: int = 10) -> QWidget:
-        page = QWidget()
-        outer = vbox(page, (24, 24, 24, 24))
-        outer.addStretch(1)
-        inner = vbox(spacing=spacing)
-        for widget in widgets:
-            inner.addWidget(widget, 0, Qt.AlignmentFlag.AlignHCenter)
-        outer.addLayout(inner)
-        outer.addStretch(1)
-        return page
-
     def _build_idle(self) -> QWidget:
         title = RoleLabel("No response yet", "fg", px=13.5, weight=600)
         text = label("Send the request to see the response body and headers here.", "muted", wrap=True)
         text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        text.setMaximumWidth(340)
+        text.setMaximumWidth(380)
         keys = QWidget()
         row = hbox(keys, spacing=4)
         row.addWidget(_kbd(MOD))
@@ -153,12 +185,15 @@ class ResponsePanel(QFrame):
         row.addWidget(_kbd("Enter"))
         row.addSpacing(4)
         row.addWidget(label("to send", "small"))
-        return self._centered(_EmptyArt(), title, text, keys)
+        art = _EmptyArt()
+        return _CenteredPage([art, title, text, keys], optional=(art, keys, text))
 
     def _build_loading(self) -> QWidget:
         cancel = button("Cancel", "secondary", height=28, on_click=self.cancel.emit)
         cancel.setStyleSheet("font-size: 12px; padding: 0 12px; border-radius: 7px; min-height: 26px;")
-        return self._centered(Spinner(28), RoleLabel("Sending request…", "fg2", px=12.5), cancel, spacing=12)
+        spinner = Spinner(28)
+        return _CenteredPage([spinner, RoleLabel("Sending request…", "fg2", px=12.5), cancel], spacing=12,
+                             optional=(spinner,))
 
     def _build_error(self) -> QWidget:
         icon = QLabel()
@@ -167,7 +202,7 @@ class ResponsePanel(QFrame):
         self._error = label("", "muted", wrap=True, selectable=True)
         self._error.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._error.setMaximumWidth(460)
-        return self._centered(icon, title, self._error)
+        return _CenteredPage([icon, title, self._error], optional=(icon,))
 
     def _build_body(self) -> QWidget:
         page = QWidget()
