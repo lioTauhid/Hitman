@@ -41,10 +41,8 @@ Get the latest version from the **[Releases page](https://github.com/lioTauhid/H
 **macOS:** unzip and drag **Hitman** to **Applications**. On first launch, macOS warns that it can't
 verify the app. Go to **System Settings → Privacy & Security** and click **Open Anyway**.
 
-**Windows:** run the **setup.exe** and follow the steps. It installs for your user without admin rights
-and adds Hitman to the Start menu; uninstall it from **Settings → Apps**. If Windows shows *"Windows
-protected your PC"*, click **More info → Run anyway**. For the portable zip, extract it and run
-**Hitman.exe** (keep it next to the `_internal` folder).
+**Windows:** run the **Hitman-windows-x64-setup.exe** and follow the steps. If Windows shows *"Windows
+protected your PC"*, click **More info → Run anyway**.
 
 **Ubuntu / Debian:** install the package (apt also installs the system libraries it needs), then open
 Hitman from your app menu or run `hitman`. Remove it with `sudo apt remove hitman`.
@@ -75,10 +73,10 @@ You only see the security warnings once, because the app isn't signed with a pai
   Dart snippets
 - **Comfort:** dark and light themes, keyboard shortcuts, and tabs restored on launch
 
-<p align="center">
-  <img src="docs/screenshots/hitman-dark.png" alt="Hitman in the dark theme" width="440">
+<p>
+  <img src="docs/screenshots/hitman-dark.png" alt="Hitman in the dark theme">
   &nbsp;
-  <img src="docs/screenshots/environments.png" alt="Managing environments" width="440">
+  <img src="docs/screenshots/environments.png" alt="Managing environments">
 </p>
 
 ## Generate code
@@ -86,7 +84,7 @@ You only see the security warnings once, because the app isn't signed with a pai
 Click **Code** to get the current request as **cURL**, **Python** (requests), **JavaScript** (fetch),
 **Go** or **Dart**, with your variables already filled in. Copy it with one click.
 
-<p align="center">
+<p>
   <img src="docs/screenshots/generate-code.png" alt="The Generate code dialog showing a Python requests snippet" width="800">
 </p>
 
@@ -94,16 +92,19 @@ Click **Code** to get the current request as **cURL**, **Python** (requests), **
 
 | | Hitman | Postman |
 | --- | --- | --- |
-| Account required | ❌ Never | ✅ For collections, environments and sync |
+| Login or Account required | Never | For collections, environments and web sync |
 | Your data | On your computer | Synced to Postman's cloud |
 | Download size | **~32 MB** | ~124–149 MB |
 | Installed size | **~82 MB** | ~390 MB |
+| Startup time | ✅ **Very fast** | ❌ Slow (more module, web sync need time) |
 | Built with | Native Qt | Electron (bundled browser) |
 | Collections, environments, history | ✅ | ✅ |
 | Import Postman collections, OpenAPI, cURL | ✅ | ✅ |
 | Code generation | 5 languages | Many languages |
 | Test scripts, runners, mock servers | ❌ | ✅ |
 | Team collaboration | ❌ | ✅ |
+| Data export/share (json, csv) | ✅ | ✅ |
+| Service type | ✅ Fremium (Free and open source) | ❌ Not free fully |
 
 **Hitman** is for fast, private, everyday API testing. **Postman** is for teams that need scripting,
 automation and collaboration.
