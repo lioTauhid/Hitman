@@ -11,6 +11,7 @@ SHORTCUTS = [
     ("save", "Save request", "Ctrl+S"),
     ("close", "Close tab", "Ctrl+W"),
     ("search", "Search requests", "Ctrl+K"),
+    ("find", "Search in response", "Ctrl+F"),
     ("import", "Import", "Ctrl+O"),
     ("sidebar", "Toggle sidebar", "Ctrl+B"),
     ("code", "Generate code", "Ctrl+Alt+C"),
@@ -35,6 +36,10 @@ def display_keys(sequence: str) -> list[str]:
     """Split a sequence into key caps for display, using platform names."""
     mapping = _MAC_KEYS if sys.platform == "darwin" else _PC_KEYS
     return [mapping.get(k, k) for k in qt_sequence(sequence).split("+")]
+
+
+def sequence_for(action: str) -> str:
+    return next(sequence for name, _label, sequence in SHORTCUTS if name == action)
 
 
 def display_text(sequence: str) -> str:

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QIntValidator
-from PySide6.QtWidgets import QButtonGroup, QFrame, QGridLayout, QLabel, QLineEdit, QScrollArea, QStackedWidget, QWidget
+from PySide6.QtWidgets import (QButtonGroup, QFrame, QGridLayout, QLabel, QLineEdit, QPushButton, QScrollArea,
+                               QStackedWidget, QWidget)
 
-from hitman import APP_NAME, __version__
+from hitman import APP_NAME, AUTHOR, AUTHOR_URL, REPO_URL, __version__
 from hitman.paths import data_dir, display_path
 from hitman.services.workspace import Workspace
 from hitman.ui.dialogs.base import OverlayDialog
@@ -175,12 +176,19 @@ class SettingsDialog(OverlayDialog):
         info = QGridLayout()
         info.setHorizontalSpacing(18)
         info.setVerticalSpacing(6)
-        rows = [("Data folder", display_path(data_dir()), True),
-                ("Storage", "SQLite database, kept in the data folder", False),
-                ("Sync", "Local only. No account needed.", False)]
-        for i, (key, value, mono) in enumerate(rows):
+        creator = QWidget()
+        creator_row = hbox(creator, spacing=6)
+        creator_row.addWidget(RoleLabel(AUTHOR, "fg", px=12.5))
+        creator_row.addWidget(label("·", "muted"))
+        creator_row.addWidget(_link("LinkedIn", AUTHOR_URL))
+        rows = [("Data folder", RoleLabel(display_path(data_dir()), "fg", px=12.5, mono=True)),
+                ("Storage", RoleLabel("SQLite database, kept in the data folder", "fg", px=12.5)),
+                ("Sync", RoleLabel("Local only. No account needed.", "fg", px=12.5)),
+                ("Source code", _link(REPO_URL.removeprefix("https://"), REPO_URL)),
+                ("Created by", creator)]
+        for i, (key, value) in enumerate(rows):
             info.addWidget(label(key, "muted"), i, 0)
-            info.addWidget(RoleLabel(value, "fg", px=12.5, mono=mono), i, 1)
+            info.addWidget(value, i, 1, Qt.AlignmentFlag.AlignLeft)
         info.setColumnStretch(1, 1)
         layout.addLayout(info)
         layout.addSpacing(14)
@@ -189,3 +197,10 @@ class SettingsDialog(OverlayDialog):
                                  on_click=lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(data_dir())))))
         actions.addStretch(1)
         layout.addLayout(actions)
+
+
+def _link(text: str, url: str) -> QPushButton:
+    """A text link that opens `url` in the browser."""
+    link = button(text, "link", on_click=lambda: QDesktopServices.openUrl(QUrl(url)))
+    link.setToolTip(url)
+    return link

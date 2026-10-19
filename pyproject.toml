@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hitman"
-version = "0.1.0"
+dynamic = ["version"]  # read from hitman/__init__.py, the one place to change it
 description = "A lightweight desktop API client. No account, no cloud, local only."
 readme = "README.md"
 license = "LGPL-2.1-only"
@@ -28,6 +28,9 @@ build = ["pyinstaller>=6.10", "pillow>=10"]
 # A GUI entry point: on Windows it starts without opening a console window.
 [project.gui-scripts]
 hitman = "hitman.app:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "hitman.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["hitman*"]

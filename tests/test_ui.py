@@ -109,3 +109,34 @@ def test_form_editor_file_fields(app):
 
     editor.set_files_enabled(False)  # url-encoded: no type picker
     assert editor._rows[0].type_button.isHidden()
+
+
+def test_code_editor_folds_json(app):
+    from hitman.core.formatting import pretty_body
+    from hitman.ui.widgets.code_editor import CodeEditor
+
+    editor = CodeEditor(read_only=True, folding=True)
+    editor.set_text(pretty_body('{"user": {"tags": ["a", "b"], "name": "Ann"}, "id": 1}', "JSON"))
+    editor.set_language("JSON")
+    doc = editor.document()
+
+    def shown():
+        return [n for n in range(doc.blockCount()) if doc.findBlockByNumber(n).isVisible()]
+
+    assert editor.has_folds() and shown() == list(range(10))
+    editor.fold(2)  # "tags": [
+    assert shown() == [0, 1, 2, 6, 7, 8, 9]
+    editor.fold(1)  # "user": {
+    assert shown() == [0, 1, 8, 9]
+    editor.unfold(1)  # the inner fold stays folded
+    assert shown() == [0, 1, 2, 6, 7, 8, 9]
+
+    editor.fold_all()
+    assert shown() == [0]
+    editor.go_to_start()
+    assert editor.find('"b"') and editor.textCursor().blockNumber() == 4
+    assert shown() == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # every fold around the match opened
+
+    editor.fold(0)
+    editor.set_language("XML")  # folding is for JSON only
+    assert not editor.has_folds() and shown() == list(range(10))

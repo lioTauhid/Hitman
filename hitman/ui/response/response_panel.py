@@ -14,6 +14,7 @@ from hitman.core.http import HttpResponse
 from hitman.services.session import OpenTab
 from hitman.ui import icons
 from hitman.ui.fonts import mono_font, ui_font
+from hitman.ui.shortcuts import display_text, sequence_for
 from hitman.ui.theme import manager, set_cls, theme
 from hitman.ui.widgets.code_editor import CodeEditor
 from hitman.ui.widgets.common import (IconButton, RoleLabel, SegmentedControl, Spinner, button, hbox, label,
@@ -215,7 +216,15 @@ class ResponsePanel(QFrame):
         self._format_badge.setFixedHeight(24)
         bar.addWidget(self._format_badge)
         bar.addStretch(1)
-        self._find_button = IconButton("search", "Search in response", icon_size=14, role="fg3", radius=6)
+        self._fold_buttons = []
+        for icon, tip, slot in (("collapse", "Collapse all", lambda: self.pretty.fold_all()),
+                                ("expand", "Expand all", lambda: self.pretty.unfold_all())):
+            btn = IconButton(icon, tip, icon_size=14, role="fg3", radius=6)
+            btn.clicked.connect(slot)
+            bar.addWidget(btn)
+            self._fold_buttons.append(btn)
+        self._find_button = IconButton("search", f"Search in response ({display_text(sequence_for('find'))})",
+                                       icon_size=14, role="fg3", radius=6)
         self._find_button.clicked.connect(self._toggle_find)
         bar.addWidget(self._find_button)
         layout.addLayout(bar)
@@ -245,7 +254,7 @@ class ResponsePanel(QFrame):
         empty = label("This response has no body.", "muted")
         empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.body_stack.addWidget(empty)
-        self.pretty = CodeEditor(read_only=True, framed=False, gutter_border=False)
+        self.pretty = CodeEditor(read_only=True, framed=False, gutter_border=False, folding=True)
         self.pretty.setAccessibleName("Response body")
         self.body_stack.addWidget(self.pretty)
         self.raw = CodeEditor(read_only=True, framed=False, line_numbers=False, wrap=True)
@@ -350,6 +359,9 @@ class ResponsePanel(QFrame):
             self.body_stack.setCurrentIndex(1 if self.tab.response_view == "pretty" else 2)
         self.views.setVisible(self._format not in ("Empty", "Binary"))
         self._find_button.setVisible(self._format not in ("Empty", "Binary"))
+        foldable = self.body_stack.currentIndex() == 1 and self.pretty.has_folds()
+        for btn in self._fold_buttons:
+            btn.setVisible(foldable)
 
     def _on_section(self, key: str) -> None:
         if self.tab:
@@ -374,6 +386,21 @@ class ResponsePanel(QFrame):
             self.tab.response = None
             self._shown_response = None
             self.set_tab(self.tab)
+
+    def open_find(self) -> None:
+        """Ctrl/Cmd+F: show the body and focus its search, when the response has text to search."""
+        response = self.tab.response if self.tab else None
+        if not response or not response.ok or self.tab.loading or self._format in ("Empty", "Binary"):
+            return
+        if self.tab.response_section != "body":
+            self.tab.response_section = "body"
+            self.tabs.set_current("body")
+            self._sync_body_page()
+        if self.find_bar.isVisible():  # pressed again: back to the search box, keeping the current match
+            self.find_input.setFocus()
+            self.find_input.selectAll()
+        else:
+            self._toggle_find()
 
     def _toggle_find(self) -> None:
         show = not self.find_bar.isVisible()

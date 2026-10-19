@@ -164,3 +164,32 @@ def test_file_picked_in_the_editor_is_uploaded(window, server, tmp_path):
             break
         _wait(50)
     assert json.loads(tab.response.body) == {"type": "multipart/form-data", "has_file": True}
+
+
+def test_ctrl_f_opens_search_in_the_response(window, server):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    window.controller.new_tab()
+    apply_url(window.session.active.request, f"{server}/users/1")
+    window.controller.send()
+    for _ in range(100):
+        if window.session.active.response is not None:
+            break
+        _wait(50)
+    response = window.request_panel.response
+    response.tabs.changed.emit("headers")  # searching jumps back to the body
+    window.activateWindow()
+    _wait(50)
+
+    def press_find():
+        QTest.keyClick(window, Qt.Key.Key_F, Qt.KeyboardModifier.ControlModifier)
+        _wait(20)
+
+    press_find()
+    assert window.session.active.response_section == "body"
+    assert response.find_bar.isVisible() and response.find_input.hasFocus()
+    QTest.keyClicks(response.find_input, "users")
+    assert response._find_count.text() == "1 match"
+    press_find()  # again: stays open, text selected for retyping
+    assert response.find_bar.isVisible() and response.find_input.selectedText() == "users"

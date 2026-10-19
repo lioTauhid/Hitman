@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/hitman-dark.png" alt="The Hitman window: a collection tree, a GET request and a formatted JSON response" width="900">
+  <img src="docs/screenshots/hitman-light.png" alt="The Hitman window: a collection tree, a GET request and a formatted JSON response" width="900">
 </p>
 
 - **Small and quick:** a 32 MB download that opens in about a second.
@@ -69,14 +69,14 @@ You only see the security warnings once, because the app isn't signed with a pai
 - **Environments:** use `{{variables}}` anywhere and switch between Development, Production and so on;
   secrets are masked
 - **Collections and history:** folders, tabs and a full history of what you've sent
-- **Responses:** formatted and highlighted JSON/XML, headers, search, copy and save
+- **Responses:** formatted and highlighted JSON/XML, collapsible JSON blocks, headers, search, copy and save
 - **Import:** Postman collections, OpenAPI 3 and cURL (paste a cURL command straight into the URL bar)
 - **Export and code:** export to Hitman or Postman JSON, or generate cURL, Python, JavaScript, Go and
   Dart snippets
 - **Comfort:** dark and light themes, keyboard shortcuts, and tabs restored on launch
 
 <p align="center">
-  <img src="docs/screenshots/hitman-light.png" alt="Hitman in the light theme" width="440">
+  <img src="docs/screenshots/hitman-dark.png" alt="Hitman in the dark theme" width="440">
   &nbsp;
   <img src="docs/screenshots/environments.png" alt="Managing environments" width="440">
 </p>
@@ -112,9 +112,9 @@ automation and collaboration.
 
 On macOS use **⌘** where this says Ctrl.
 
-| Send | New tab | Save | Close tab | Search | Generate code |
-| --- | --- | --- | --- | --- | --- |
-| Ctrl+Enter | Ctrl+N | Ctrl+S | Ctrl+W | Ctrl+K | Ctrl+Alt+C |
+| Send | New tab | Save | Close tab | Search | Search in response | Generate code |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ctrl+Enter | Ctrl+N | Ctrl+S | Ctrl+W | Ctrl+K | Ctrl+F | Ctrl+Alt+C |
 
 See every shortcut with **Ctrl+/**.
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Iterable
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
@@ -69,6 +70,23 @@ def pretty_body(text: str, fmt: str) -> str:
         except (ExpatError, ValueError):
             return text
     return text
+
+
+def fold_ranges(lines: Iterable[str]) -> dict[int, int]:
+    """Map each line that opens a multi-line `{` or `[` to the line that closes it.
+
+    Meant for indented JSON with one value per line, as `pretty_body` writes it. Unbalanced
+    brackets are skipped rather than guessed at.
+    """
+    ranges: dict[int, int] = {}
+    stack: list[tuple[int, str]] = []
+    for number, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped[:1] in ("}", "]") and stack and stack[-1][1] == stripped[0]:
+            ranges[stack.pop()[0]] = number
+        if stripped.endswith(("{", "[")):
+            stack.append((number, "}" if stripped[-1] == "{" else "]"))
+    return ranges
 
 
 def beautify_json(text: str) -> str:

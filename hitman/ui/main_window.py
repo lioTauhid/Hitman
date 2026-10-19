@@ -55,7 +55,7 @@ class MainWindow(QMainWindow):
         work.addWidget(self.rail)
         self.sidebar = QStackedWidget()
         self.sidebar.setObjectName("Sidebar")
-        self.sidebar.setFixedWidth(260)
+        self.sidebar.setFixedWidth(240)
         self.collections_panel = CollectionsPanel()
         self.environments_panel = EnvironmentsPanel()
         self.history_panel = HistoryPanel()
@@ -198,8 +198,8 @@ class MainWindow(QMainWindow):
         c = self.controller
         handlers = {
             "send": c.send, "new": c.new_tab, "save": c.save, "close": lambda: c.close_tab(self.session.active_id),
-            "search": self._focus_search, "import": c.import_data, "sidebar": self.toggle_sidebar,
-            "code": c.open_code, "settings": c.open_settings, "next_tab": lambda: self.session.cycle(1),
+            "search": self._focus_search, "find": self.request_panel.response.open_find, "import": c.import_data,
+            "sidebar": self.toggle_sidebar, "code": c.open_code, "settings": c.open_settings, "next_tab": lambda: self.session.cycle(1),
             "prev_tab": lambda: self.session.cycle(-1), "shortcuts": lambda: c.open_settings("shortcuts"),
         }
         for action, _label, sequence in SHORTCUTS:

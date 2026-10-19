@@ -1,6 +1,6 @@
 ; Inno Setup script for the Hitman Windows installer (requires Inno Setup 6.3 or later).
 ; Normally run by `make package` / `python scripts/build.py --package`, which passes the defines below.
-; To run it by hand after `make build`:  iscc /DAppVersion=0.1.0 scripts\hitman.iss
+; To run it by hand after `make build`:  iscc /DAppVersion=0.2.0 scripts\hitman.iss
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"

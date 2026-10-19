@@ -141,7 +141,8 @@ def maintainer() -> str:
         return result.stdout.strip()
 
     name, email = git("user.name"), git("user.email")
-    return f"{name} <{email}>" if name and email else "Hitman <https://github.com/lioTauhid/Hitman>"
+    # return f"{name} <{email}>" if name and email else "Hitman <https://github.com/lioTauhid/Hitman>"
+    return "Hitman <https://github.com/lioTauhid/Hitman>"
 
 
 def linux_deb() -> Path:
